@@ -1,6 +1,6 @@
 # Weather Forecast and Current Conditions Fetcher
 
-This project is designed to retrieve comprehensive weather information using the National Weather Service API.  It was created with 95.42% AI-generated code. My old mess of a shell script was finally broken by whatever changes were made recently the NWS API. It had been miraculously running for about a decade so it was time for an upgrade. This upgrade fetches real-time weather data such as temperature, wind speed, humidity, and more based on specific airport codes. Due to the unavailability of current weather conditions directly from the National Weather Service API, data from nearby airports is used for current weather updates. There is a TODO item to include current weather hazards, a feature present in the previous script but not yet implemented here.
+This project is designed to retrieve comprehensive weather information using the National Weather Service API.  It was created with 95.42% AI-generated code. My old mess of a shell script was finally broken by whatever changes were made recently to the NWS API. It had been miraculously running for about a decade so it was time for an upgrade. This upgrade fetches real-time weather data such as temperature, wind speed, humidity, and more based on specific airport codes. Due to the unavailability of current weather conditions directly from the National Weather Service API, data from nearby airports is used for current weather updates. There is a TODO item to include current weather hazards, a feature present in the previous script but not yet implemented here.
 
 
 1. **Current Weather Conditions and Forecast Retrieval**:
@@ -19,19 +19,13 @@ This project is designed to retrieve comprehensive weather information using the
 
 ## Requirements
 
-- Python 3.6 or higher
+- Python 3, of some flavor, probably
 - `requests` library for making HTTP requests
 - `xml.etree.ElementTree` for parsing XML responses
 
 ## Installation
 
-Clone the repository and install the required dependencies:
-
-```bash
-git clone <repository_url>
-cd <repository_name>
-pip install -r requirements.txt
-```
+Clone the repository and move the script to somewhere in the path
 
 ## Usage
 
@@ -39,8 +33,17 @@ Run the script with appropriate command-line arguments or set environment variab
 API key to anyone looking over running processes:
 
 ```bash
-python weather_fetcher.py --zip <zip_code> --gc_api_key <maps_co_api_key> --airport <airport_code> [--forecast_only]
+python weather-fetch.py --zip <zip_code> --gc_api_key <maps_co_api_key> --airport <airport_code> [--forecast_only]
 ```
+or, more betterer..
+```bash
+export GC_API_KEY="abc123xyz456"
+export AIRPORT="KOZZ"
+export ZIP="93142"
+
+python weather-fetch.py [--forecast_only]
+```
+
 
 ### Arguments
 
