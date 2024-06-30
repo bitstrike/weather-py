@@ -84,6 +84,8 @@ class CurrentCond:
 class WeatherPeriod:
     city = None
     state = None
+    forecastZoneURL = None
+    forecastZone = None
 
     def __init__(self, period_data):
         """
@@ -248,10 +250,16 @@ def fetch_weather_forecast(zip_code, api_key):
 
             if 'properties' in data:
                 forecast_url = data['properties'].get('forecast') 
-                
+                WeatherPeriod.forecastZoneURL = data['properties'].get('forecastZone')
+
+                if WeatherPeriod.forecastZoneURL:
+                    # get the last portion of the forecastZoneURL which is like this: https://api.weather.gov/zones/forecast/ZYZ063
+                    WeatherPeriod.forecastZone = WeatherPeriod.forecastZoneURL.split('/')[-1]
+        
                 WeatherPeriod.city = data['properties'].get('relativeLocation', {}).get('properties', {}).get('city')
                 WeatherPeriod.state = data['properties'].get('relativeLocation', {}).get('properties', {}).get('state')
-           
+                
+
                 if forecast_url:
                     forecast_response = requests.get(forecast_url)
                     forecast_response.raise_for_status()
@@ -326,6 +334,7 @@ def build_forecast_string(periods):
 
     forecast_string = ""
     forecast_details = []
+    high_or_low = "High"
 
     for period in periods:
         # if detailed forecast contains wording "with a low" then high_or_low = "low"
@@ -424,6 +433,37 @@ def build_condition_string(current_cond):
     return ';'.join(pairs)
 
 
+def get_hazards (zone, urgency, severity, certainty):
+    """
+    see: https://www.weather.gov/documentation/services-web-api
+
+    Fetches the latest hazards for a specified zone.
+    
+    Args:
+        zone (str): The zone code for which to fetch the hazards.
+        # curl -X GET "https://api.weather.gov/alerts/active?zone=XYZ001&urgency=Immediate,Expected,Future&severity=Extreme,Severe,Moderate&certainty=Observed,Likely&limit=500
+    """
+
+    base_url = f"https://api.weather.gov/alerts/active?zone={zone}&urgency={urgency}&severity={severity}&certainty={certainty}&limit=500"
+    try:
+        response = requests.get(base_url)
+        
+        if response.status_code != 200:
+            print (f"Error fetching weather data. site returned: {response.status_code}")
+            exit(1)
+
+        response.raise_for_status()
+        data = response.json()
+        
+        # hazards are in the 'features' property. return it if it exists
+        if 'features' in data:
+            return data['features']
+        else:
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching weather data: {e}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch 7-day weather forecast from National Weather Service.")
     parser.add_argument("--zip", required=False, help="ZIP code of the location")
@@ -460,11 +500,18 @@ if __name__ == "__main__":
     # Fetch current conditions using the provided airport and API key
     current_cond = get_current_conditions(args.airport)
 
+    # check if any current weather hazards
+    # see: https://www.weather.gov/documentation/services-web-api
+    hazards = get_hazards (WeatherPeriod.forecastZone, "Immediate,Expected,Future", "Extreme,Severe,Moderate", "Observed,Likely")
+    print(f"Current Hazards: {hazards}")
+
     # Print weather forecast for debugging or whatever.. if you want only the forecast, use --forecast_only
     if periods:
         if not args.forecast_only:
-            print (f"periods:{periods}")
             print(f"Update Time: {update_time}")
+            print(f"Forecast ZoneUrl: {WeatherPeriod.forecastZoneURL}")
+            print(f"Forecast Zone: {WeatherPeriod.forecastZone}")
+            
             print("Weather Forecast:")
             for period in periods:
                 print(f"Number: {period.number}")
@@ -505,3 +552,4 @@ if __name__ == "__main__":
     # finally, spit out the formatted delimited string of weather forecast info so the various scripts querying the web endpoint can use it
     forecast_string = build_forecast_string(periods)
     print(forecast_string)            
+    
