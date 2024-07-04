@@ -98,6 +98,7 @@ class WeatherPeriod:
     state = None
     forecastZoneURL = None
     forecastZone = None
+    airports = None
 
     def __init__(self, period_data):
         """
@@ -121,6 +122,7 @@ class WeatherPeriod:
             icon                 (str): The icon representing the weather condition.
             short_forecast       (str): A short forecast for the weather period.
             detailed_forecast    (str): A detailed forecast for the weather period.
+            observation_station  (str): The observation stations which contain the airport identifier.
         """ 
         self.number = period_data.get('number')
         self.name = period_data.get('name')
@@ -136,6 +138,7 @@ class WeatherPeriod:
         self.icon = period_data.get('icon')
         self.short_forecast = period_data.get('shortForecast')
         self.detailed_forecast = period_data.get('detailedForecast')
+        self.observation_station = period_data.get('observationStations')
 
     def get_temp_as_int(self):
         """
@@ -240,7 +243,51 @@ def geocode_zip(zip_code, api_key):
 
 
 
-def fetch_weather_forecast(zip_code, api_key):
+def get_airports (station_url, data):
+    """
+    Retrieves a list of airports from the provided station URL.
+
+    Args:
+        station_url (str): The URL of the station to fetch data from.
+        data (dict): The data containing the county value to match.
+
+    Returns:
+        list: A list of dictionaries containing information about each airport.
+            Each dictionary contains the following keys:
+                - stationIdentifier (str): The identifier of the airport.
+                - county (str): The county the airport is located in.
+                - coordinates (list): The coordinates of the airport.
+
+    Raises:
+        requests.exceptions.RequestException: If there is an error fetching the station data.
+
+    """
+    station_results = []
+
+    try:
+        # get the json content at the station URL
+        station_response = requests.get(station_url)
+        station_response.raise_for_status()
+        station_data = station_response.json()
+
+        for feature in station_data['features']:
+            if feature['properties']['county']:
+                if feature['properties']['county'] == data['properties']['county']:
+                            station_info = {
+                                'stationIdentifier': feature['properties']['stationIdentifier'],
+                                'county': feature['properties']['county'],
+                                'coordinates': feature['geometry']['coordinates']
+                            }
+                            station_results.append(station_info)
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching station data: {e}")
+
+    return station_results
+
+
+
+def fetch_weather_forecast(zip_code, api_key, airport):
     """
     Fetches the weather forecast for a given zip code using the provided API key.
 
@@ -271,8 +318,13 @@ def fetch_weather_forecast(zip_code, api_key):
 
             if 'properties' in data:
                 forecast_url = data['properties'].get('forecast') 
+                station_url = data['properties'].get('observationStations')
                 WeatherPeriod.forecastZoneURL = data['properties'].get('forecastZone')
 
+                # if AIRPORTS is empty, get a list of airports for the current condition info
+                if not airport:
+                    WeatherPeriod.airports = get_airports (station_url, data)
+                
                 if WeatherPeriod.forecastZoneURL:
                     # get the last portion of the forecastZoneURL which is like this: https://api.weather.gov/zones/forecast/ZYZ063
                     WeatherPeriod.forecastZone = WeatherPeriod.forecastZoneURL.split('/')[-1]
@@ -509,26 +561,29 @@ if __name__ == "__main__":
             exit(1)
 
     # If airport is not provided, try to get it from the environment variable AIRPORT
-    if args.airport is None:
-        args.airport = os.environ.get('AIRPORT')
-        if args.airport is None:
-            print("AIRPORT not found in command line or environment variables.")
-            exit(1)
+    airport = args.airport
+    if not airport:
+        airport = os.environ.get('AIRPORT')  # rely on WeatherPeriod.airports[0]['stationIdentifier']
 
     # Fetch weather forecast using the provided ZIP code and API key
-    update_time, periods = fetch_weather_forecast(args.zip, args.gc_api_key)
+    update_time, periods = fetch_weather_forecast(args.zip, args.gc_api_key, airport)
      
     # Fetch current conditions using the provided airport and API key
-    current_cond = get_current_conditions(args.airport)
+    if not airport:
+        airport = WeatherPeriod.airports[0]['stationIdentifier']
+        if not airport:
+            print(f"Airport not provided and unable to determine from the API.")
+        
+    current_cond = get_current_conditions(airport)
 
     # check if any current weather hazards
     # see: https://www.weather.gov/documentation/services-web-api
     hazards = get_hazards (WeatherPeriod.forecastZone, "Immediate,Expected,Future", "Extreme,Severe,Moderate", "Observed,Likely")
-    print(f"Current Hazards: {hazards}")
 
     # Print weather forecast for debugging or whatever.. if you want only the forecast, use --forecast_only
     if periods:
         if not args.forecast_only:
+            print(f"Current Hazards: {hazards}")
             print(f"Update Time: {update_time}")
             print(f"Forecast ZoneUrl: {WeatherPeriod.forecastZoneURL}")
             print(f"Forecast Zone: {WeatherPeriod.forecastZone}")
