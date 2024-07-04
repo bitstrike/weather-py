@@ -80,6 +80,18 @@ class CurrentCond:
         """
         return int(float(self.dewpoint_f))
     
+    def get_humidity_as_int(self):
+        """
+        Returns the humidity as an integer.
+        """
+        return int(float(self.relative_humidity))
+    
+    def get_wind_speed_as_int(self):
+        """
+        Returns the wind speed as an integer.
+        """
+        return int(float(self.wind_mph))
+    
 
 class WeatherPeriod:
     city = None
@@ -159,21 +171,30 @@ def compute_humidex(temp_c, rel_humidity):
     """
     Compute humidex using temperature in Celsius and relative humidity.
     Returns 'NA' if conditions don't meet humidex calculation criteria.
+    
+    verified here: http://www.csgnetwork.com/canhumidexcalc.html
+    temp 39C RH: 87 = 39C
+    
     """
-    if temp_c <= 20 or rel_humidity <= 40:
-        return 'NA'
+
+    # little risk of heat stress when under 20C or 40% RH, but compute anyway
+    # https://www.ohcow.on.ca/resources/apps-tools-calculators/humidex-based-heat-stress-calculator-plan/
+    #if temp_c <= 20 or rel_humidity <= 40:
+    #    return 'NA'
     
     # Calculate dewpoint
-    a = 17.27
-    b = 237.7
+    # https://en.wikipedia.org/wiki/Dew_point#Definition
+    a = 17.27 
+    b = 237.7 
     alpha = ((a * temp_c) / (b + temp_c)) + math.log(rel_humidity / 100.0)
     dewpoint = (b * alpha) / (a - alpha)
     
     # Calculate humidex
+    # https://en.wikipedia.org/wiki/Humidex
     e = 6.11 * math.exp(5417.7530 * ((1 / 273.16) - (1 / (dewpoint + 273.15))))
     humidex = temp_c + 0.5555 * (e - 10.0)
     
-    return round(humidex, 1)
+    return round(int(humidex), 1)
 
 
 def geocode_zip(zip_code, api_key):
