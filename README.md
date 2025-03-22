@@ -1,6 +1,6 @@
 # Weather Forecast and Current Conditions Fetcher
 
-This project is designed to retrieve comprehensive weather information using the National Weather Service API.  It was created with 95.42% AI-generated code. My old mess of a shell script was finally broken by whatever changes were made recently to the NWS API. It had been miraculously running for about a decade so it was time for an upgrade. This upgrade fetches real-time weather data such as temperature, wind speed, humidity, and more based on specific airport codes. Due to the unavailability of current weather conditions directly from the National Weather Service API, data from nearby airports is used for current weather updates. There is a TODO item to include current weather hazards, a feature present in the previous script but not yet implemented here.
+This project is designed to retrieve comprehensive weather information using the National Weather Service API.  It was created with 95.42% AI-generated code. My old mess of a shell script was finally broken by whatever changes were made recently to the NWS API. It had been miraculously running for about a decade so it was time for an upgrade. This upgrade fetches real-time weather data such as temperature, wind speed, humidity, and more based on specific airport codes. Current weather alerts/warnings/hazards are also displayed for the location given.
 
 
 1. **Current Weather Conditions and Forecast Retrieval**:
@@ -12,6 +12,7 @@ This project is designed to retrieve comprehensive weather information using the
 
 ### Features
 
+- **Weather Hazards**: Displays information about current weather watches/warnings for given area.
 - **Current Conditions**: Retrieves up-to-date weather data for airports, including temperature, wind speed, humidity, and atmospheric pressure.
 - **7-Day Forecast**: Provides detailed weather predictions for the next week, helping users plan activities or travel schedules.
 - **Geocoding Support**: Converts ZIP codes into geographic coordinates, facilitating mapping or spatial analysis tasks.
@@ -55,6 +56,8 @@ python weather-fetch.py [--forecast_only]
 ### Outputs
 
 The script prints the following information:
+- Current Hazards:
+  - Title and description
 
 - Weather Forecast:
   - Update Time
@@ -66,6 +69,7 @@ The script prints the following information:
   - Temperature
   - Wind information (speed, direction)
   - Pressure
+
 
 ### Weather Calculation
 

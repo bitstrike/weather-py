@@ -5,6 +5,7 @@ import requests
 import os
 from xml.etree import ElementTree as ET
 import math
+import json
 
 class CurrentCond:
     
@@ -157,6 +158,23 @@ class WeatherPeriod:
         Returns a formatted string representation of the object with name, short forecast, temperature, and temperature unit.
         """
         return f"{self.name}: {self.short_forecast}, {self.temperature} {self.temperature_unit}"
+    
+class WeatherAlert:
+    def __init__(self, status, expires, onset, effective, headline, description, event, urgency, certainty, severity):
+        self.status = status
+        self.expires = datetime.fromisoformat(expires) if expires else None
+        self.onset = datetime.fromisoformat(onset)
+        self.effective = datetime.fromisoformat(effective)
+        self.headline = headline
+        self.description = description
+        self.event = event
+        self.urgency = urgency
+        self.certainty = certainty
+        self.severity = severity
+
+    def __repr__(self):
+        return f"WeatherAlert(status={self.status}, event={self.event}, severity={self.severity})"
+
 
 def compute_windchill(temp_f, wind_mph):
     """
@@ -310,7 +328,9 @@ def fetch_weather_forecast(zip_code, api_key, airport):
         try:
             response = requests.get(base_url)
             if response.status_code != 200:
-                print (f"Error fetching weather data. site returned: {response.status_code}")
+                error_data = response.json()
+                title = error_data.get("title", "No title available")
+                print (f"Error fetching weather data. site returned: {response.status_code} {title}")
                 exit(1)
 
             response.raise_for_status()
@@ -319,7 +339,12 @@ def fetch_weather_forecast(zip_code, api_key, airport):
             if 'properties' in data:
                 forecast_url = data['properties'].get('forecast') 
                 station_url = data['properties'].get('observationStations')
-                WeatherPeriod.forecastZoneURL = data['properties'].get('forecastZone')
+
+                # only do this if forecastZone exists in properties. some dont seem to have this
+                if 'forecastZone' in data['properties']:
+                    WeatherPeriod.forecastZoneURL = data['properties'].get('forecastZone')
+                else:
+                    WeatherPeriod.forecastZoneURL = None
 
                 # if AIRPORTS is empty, get a list of airports for the current condition info
                 if not airport:
@@ -506,37 +531,79 @@ def build_condition_string(current_cond):
     return ';'.join(pairs)
 
 
-def get_hazards (zone, urgency, severity, certainty):
-    """
-    see: https://www.weather.gov/documentation/services-web-api
 
-    Fetches the latest hazards for a specified zone.
-    
-    Args:
-        zone (str): The zone code for which to fetch the hazards.
-        # curl -X GET "https://api.weather.gov/alerts/active?zone=XYZ001&urgency=Immediate,Expected,Future&severity=Extreme,Severe,Moderate&certainty=Observed,Likely&limit=500
-    """
+def get_hazards(state, forecast_zone):
+    #url = f'https://api.weather.gov/alerts/active?area={state}'
+    url = f'https://api.weather.gov/alerts/active?zone={forecast_zone}'
+    alerts = []
 
-    base_url = f"https://api.weather.gov/alerts/active?zone={zone}&urgency={urgency}&severity={severity}&certainty={certainty}&limit=500"
+    # https://www.weather.gov/media/notification/pdf_2023_24/scn24-55_api_v1.13.pdf
+    # https://api.weather.gov/alerts/active/zone/{forecast_zone}
+
+
+    # TEST THIS
+    # https://blog.deeplink.kr/?p=3425#Fetching_Weather_Alerts_and_Notifications
+    # Extract alert URL
+    # forecast_zone_url = data['properties']['forecastZone']
+
+    # Fetch alert data
+    alerts_url = f"https://api.weather.gov/alerts/active?zone={forecast_zone}"
+    alerts_response = requests.get(alerts_url)
+    alerts_data = alerts_response.json()
+    if alerts:
+        print("Current Weather Alerts and Notifications")
+        for alert in alerts:
+            properties = alert['properties']
+            print(f"Title: {properties['headline']}")
+            print(f"Event: {properties['event']}")
+            print(f"Description: {properties['description']}")
+            print(f"Instructions: {properties['instruction']}")
+            print("-" * 40)
+    else:
+        print("There are no active weather alerts and notifications.")
+    # TEST THIS
+
+
+
+
     try:
-        response = requests.get(base_url)
-        
-        if response.status_code != 200:
-            print (f"Error fetching weather data. site returned: {response.status_code}")
-            exit(1)
-
-        response.raise_for_status()
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an exception for bad status codes
         data = response.json()
-        
-        # hazards are in the 'features' property. return it if it exists
-        if 'features' in data:
-            return data['features']
-        else:
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching weather data: {e}")
 
+        for feature in data.get('features', []):
+            properties = feature.get('properties', {})
+            geocode = properties.get('geocode', {})
+            ugc = geocode.get('UGC', [])
 
+            if any(f"{state}Z{forecast_zone}" in code for code in ugc):
+                try:
+                    alert = WeatherAlert(
+                        status=properties['status'],
+                        expires=properties.get('expires'),
+                        onset=properties['onset'],
+                        effective=properties['effective'],
+                        headline=properties['headline'],
+                        description=properties['description'],
+                        event=properties['event'],
+                        urgency=properties['urgency'],
+                        certainty=properties['certainty'],
+                        severity=properties['severity']
+                    )
+                    alerts.append(alert)
+                except KeyError as e:
+                    print(f"Warning: Missing key in alert data: {e}")
+                except ValueError as e:
+                    print(f"Warning: Invalid data format in alert: {e}")
+
+    except requests.RequestException as e:
+        print(f"Error fetching data from API: {e}")
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON data: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+    return alerts
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch 7-day weather forecast from National Weather Service.")
     parser.add_argument("--zip", required=False, help="ZIP code of the location")
@@ -570,15 +637,17 @@ if __name__ == "__main__":
      
     # Fetch current conditions using the provided airport and API key
     if not airport:
-        airport = WeatherPeriod.airports[0]['stationIdentifier']
-        if not airport:
-            print(f"Airport not provided and unable to determine from the API.")
-        
+        # was it present in the forecast data?
+        if WeatherPeriod.airports:
+            airport = WeatherPeriod.airports[0]['stationIdentifier']
+
+    # get current conditions from API 
     current_cond = get_current_conditions(airport)
 
     # check if any current weather hazards
     # see: https://www.weather.gov/documentation/services-web-api
-    hazards = get_hazards (WeatherPeriod.forecastZone, "Immediate,Expected,Future", "Extreme,Severe,Moderate", "Observed,Likely")
+    # https://blog.deeplink.kr/?p=3425#Fetching_Weather_Alerts_and_Notifications
+    hazards = get_hazards (WeatherPeriod.state, WeatherPeriod.forecastZone)
 
     # Print weather forecast for debugging or whatever.. if you want only the forecast, use --forecast_only
     if periods:
